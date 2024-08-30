@@ -1,15 +1,19 @@
 # Elysia with Bun runtime
 
-## Getting Started
-To get started with this template, simply paste this command into your terminal:
+## วิธีติดตั้ง Package และ Run โปรเจค
+ต้องติดตั้งเป็น Runtime Bun ก่อน See: https://bun.sh/ เมื่อติดตั้งเสร็จแล้วรันคำสั่งดังนี้
 ```bash
-bun create elysia ./elysia-example
+bun install
+bunx prisma db pull --schema=./prisma/sehema.prisma
+bunx prisma generate
+
+bun dev
 ```
 
-## Development
-To start the development server run:
+## Database
+ฐานข้อมูลใช้อะไรก็ได้ในโปรเจคนี้ใช้เป็น Mysql:
 ```bash
-bun run dev
-```
+.env
 
-Open http://localhost:3000/ with your browser to see the result.
+DATABASE_URL="mysql://root:admin123456@localhost:3306/we_meeting?schema=public"
+```
