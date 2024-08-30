@@ -102,7 +102,7 @@ const authController = new Elysia()
       return { message: 'Invalid username or password' }
     }
 
-    const token = await jwt.sign({ userId: user.id, username: user.username })
+    const token = await jwt.sign({ userId: user.id, username: user.username, role: user.role, email: user.email })
 
     return { message: 'Login successful', token }
   }, {

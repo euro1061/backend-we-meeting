@@ -6,23 +6,24 @@ const authMiddleware = new Elysia()
     name: 'jwt',
     secret: process.env.JWT_SECRET || 'your-secret-key'
   }))
-  .derive(({ jwt, set }) => ({
-    auth: async () => {
-      // ดึง token จาก Authorization header
-      const token = set.headers.authorization?.split(' ')[1]
+  .derive({ as: 'scoped' }, async ({ jwt, set, headers }) => {
+    const authenticate = async () => {
+      const token = headers.authorization?.split(' ')[1]
       if (!token) {
         set.status = 401
-        return 'Unauthorized'
+        return { success: false, error: 'No token provided' }
       }
-      // ตรวจสอบความถูกต้องของ token
+
       const payload = await jwt.verify(token)
       if (!payload) {
         set.status = 401
-        return 'Invalid token'
+        return { success: false, error: 'Invalid token' }
       }
-      // ส่งคืนข้อมูลผู้ใช้ที่อยู่ใน token
-      return payload
+
+      return { success: true, user: payload }
     }
-  }))
+
+    return { authenticate }
+  })
 
 export default authMiddleware

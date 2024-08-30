@@ -24,65 +24,32 @@ model User {
 }
 
 model Room {
-  id          Int             @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   name        String
   description String?
   capacity    Int
   imageUrl    String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   bookings    Booking[]
-  equipments  RoomEquipment[]
 }
 
 model Booking {
-  id          Int                @id @default(autoincrement())
-  userId      Int
-  roomId      Int
-  startTime   DateTime
-  endTime     DateTime
-  description String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  room        Room               @relation(fields: [roomId], references: [id])
-  user        User               @relation(fields: [userId], references: [id])
-  equipments  BookingEquipment[]
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  roomId          Int
+  startTime       DateTime
+  endTime         DateTime
+  title           String   // หัวข้อการประชุม
+  description     String?
+  attendeeCount   Int      // จำนวนผู้เข้าร่วม
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  room            Room     @relation(fields: [roomId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
 
   @@index([roomId], map: "Booking_roomId_fkey")
   @@index([userId], map: "Booking_userId_fkey")
-}
-
-model Equipment {
-  id             Int                @id @default(autoincrement())
-  name           String
-  description    String?
-  totalQuantity  Int
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  bookings       BookingEquipment[]
-  roomEquipments RoomEquipment[]
-}
-
-model RoomEquipment {
-  roomId      Int
-  equipmentId Int
-  quantity    Int
-  equipment   Equipment @relation(fields: [equipmentId], references: [id])
-  room        Room      @relation(fields: [roomId], references: [id])
-
-  @@id([roomId, equipmentId])
-  @@index([equipmentId], map: "RoomEquipment_equipmentId_fkey")
-}
-
-model BookingEquipment {
-  bookingId   Int
-  equipmentId Int
-  quantity    Int
-  booking     Booking   @relation(fields: [bookingId], references: [id])
-  equipment   Equipment @relation(fields: [equipmentId], references: [id])
-
-  @@id([bookingId, equipmentId])
-  @@index([equipmentId], map: "BookingEquipment_equipmentId_fkey")
 }
 
 enum Role {

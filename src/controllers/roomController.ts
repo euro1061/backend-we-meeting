@@ -4,14 +4,19 @@ import { randomUUID } from 'crypto'
 import { writeFile } from 'fs/promises'
 import path from 'path'
 import { unlink } from 'fs/promises'
+import authMiddleware from '../middlewares/authMiddleware'
 
 const prisma = new PrismaClient()
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 
 const roomController = new Elysia()
+  .use(authMiddleware)
   // Create a room
-  .post('/rooms', async ({ request, set }) => {
+  .post('/rooms', async ({ request, set, authenticate }) => {
+    const auth = await authenticate()
+    if (!auth.success) return auth
+
     const formData = await request.formData()
     const name = formData.get('name') as string
     const description = formData.get('description') as string
@@ -88,7 +93,10 @@ const roomController = new Elysia()
   })
 
   // Update a room
-  .put('/rooms/:id', async ({ params, request, set }) => {
+  .put('/rooms/:id', async ({ params, request, set, authenticate }) => {
+    const auth = await authenticate()
+    if (!auth.success) return auth
+
     const formData = await request.formData()
     const name = formData.get('name') as string
     const description = formData.get('description') as string
@@ -170,8 +178,10 @@ const roomController = new Elysia()
   })
 
   // Delete a room
-  .delete('/rooms/:id', async ({ params, set }) => {
+  .delete('/rooms/:id', async ({ params, set, authenticate }) => {
     try {
+      const auth = await authenticate()
+      if (!auth.success) return auth
       // First, find the room to get the image URL
       const room = await prisma.room.findUnique({
         where: { id: parseInt(params.id) }
