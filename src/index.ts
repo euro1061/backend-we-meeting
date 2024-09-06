@@ -9,6 +9,7 @@ import { useLoggers } from './config/loggers'
 import { readFile } from 'fs/promises'
 import { extname } from 'path'
 import reportController from './controllers/reportController'
+import userRoutes from './routes/userRoutes'
 const UPLOAD_DIR = 'uploads'
 
 const app = new Elysia({ name: "backend-we-meeting" })
@@ -19,6 +20,7 @@ const app = new Elysia({ name: "backend-we-meeting" })
   .use(roomRoutes)
   .use(reportController)
   .use(bookingRoutes)
+  .use(userRoutes)
   .onStart((app) => {
     console.log('Available routes:')
     app.routes.forEach(route => {

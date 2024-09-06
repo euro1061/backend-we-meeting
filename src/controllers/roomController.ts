@@ -14,32 +14,41 @@ const roomController = new Elysia()
   .use(authMiddleware)
   // Create a room
   .post('/rooms', async ({ request, set, authenticate }) => {
-    const auth = await authenticate()
-    if (!auth.success) return auth
+    try {
+      const auth = await authenticate()
+      if (!auth.success) return auth
 
-    const formData = await request.formData()
-    const name = formData.get('name') as string
-    const description = formData.get('description') as string
-    const capacity = parseInt(formData.get('capacity') as string)
-    const image = formData.get('image') as File | null
+      const formData = await request.formData()
+      const name = formData.get('name') as string
+      const description = formData.get('description') as string
+      const capacity = parseInt(formData.get('capacity') as string)
+      const imageFile = formData.get('imageFile') as File | null
 
-    let imageUrl = null
-    if (image && image instanceof File && image.type.startsWith('image/')) {
-      const fileExt = image.name.split('.').pop()
-      const fileName = `${randomUUID()}.${fileExt}`
-      const filePath = path.join(UPLOAD_DIR, fileName)
+      console.log(formData.get('imageFile'))
 
-      const arrayBuffer = await image.arrayBuffer()
-      await writeFile(filePath, Buffer.from(arrayBuffer))
-      imageUrl = `/uploads/${fileName}`
+      // console.log('Creating room:', name, description, capacity, imageFile)
+
+      let imageUrl = null
+      if (imageFile && imageFile instanceof File && imageFile.type.startsWith('image/')) {
+        const fileExt = imageFile.name.split('.').pop()
+        const fileName = `${randomUUID()}.${fileExt}`
+        const filePath = path.join(UPLOAD_DIR, fileName)
+
+        const arrayBuffer = await imageFile.arrayBuffer()
+        await writeFile(filePath, Buffer.from(arrayBuffer))
+        imageUrl = `/uploads/${fileName}`
+      }
+
+      const room = await prisma.room.create({
+        data: { name, description, capacity, imageUrl }
+      })
+
+      set.status = 201
+      return room
+    } catch (error) {
+      console.log('Error creating room:', error)
+      return error
     }
-
-    const room = await prisma.room.create({
-      data: { name, description, capacity, imageUrl }
-    })
-
-    set.status = 201
-    return room
   }, {
     detail: {
       tags: ['Rooms'],
@@ -54,7 +63,7 @@ const roomController = new Elysia()
                 name: { type: 'string' },
                 description: { type: 'string' },
                 capacity: { type: 'string' },
-                image: { type: 'string', format: 'binary' }
+                imageFile: { type: 'string', format: 'binary' }
               }
             }
           }
@@ -101,7 +110,7 @@ const roomController = new Elysia()
     const name = formData.get('name') as string
     const description = formData.get('description') as string
     const capacity = parseInt(formData.get('capacity') as string)
-    const image = formData.get('image') as File | null
+    const imageFile = formData.get('imageFile') as File | null
 
     try {
       // Get the current room data
@@ -116,7 +125,7 @@ const roomController = new Elysia()
 
       let imageUrl = currentRoom.imageUrl // Keep the current image URL by default
 
-      if (image && image instanceof File && image.type.startsWith('image/')) {
+      if (imageFile && imageFile instanceof File && imageFile.type.startsWith('image/')) {
         // If there's a new image uploaded
 
         // Delete the old image if it exists
@@ -128,11 +137,11 @@ const roomController = new Elysia()
         }
 
         // Upload the new image
-        const fileExt = image.name.split('.').pop()
+        const fileExt = imageFile.name.split('.').pop()
         const fileName = `${randomUUID()}.${fileExt}`
         const filePath = path.join(UPLOAD_DIR, fileName)
 
-        const arrayBuffer = await image.arrayBuffer()
+        const arrayBuffer = await imageFile.arrayBuffer()
         await writeFile(filePath, Buffer.from(arrayBuffer))
         imageUrl = `/uploads/${fileName}`
       }

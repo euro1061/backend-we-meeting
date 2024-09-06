@@ -179,7 +179,6 @@ const reportController = new Elysia()
             description: 'Get a list of available rooms for a specific date range'
         }
     })
-
     .get('/api/reports/monthly-summary', async ({ query, set, authenticate }) => {
         const auth = await authenticate()
         if (!auth.success) return auth
@@ -232,6 +231,166 @@ const reportController = new Elysia()
             description: 'Get a summary of bookings for a specific month'
         }
     })
+    .get('/api/reports/monthly-bookings', async ({ query, set, authenticate }) => {
+        const auth = await authenticate()
+        if (!auth.success) return auth
+
+        const { year, month } = query
+        const startDate = new Date(parseInt(year), parseInt(month) - 1, 1)
+        const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999)
+
+        try {
+            const bookings = await prisma.booking.findMany({
+                where: {
+                    startTime: { gte: startDate },
+                    endTime: { lte: endDate }
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    attendeeCount: true,
+                    startTime: true,
+                    endTime: true,
+                    room: {
+                        select: {
+                            name: true
+                        }
+                    },
+                    user: {
+                        select: {
+                            firstName: true,
+                            lastName: true
+                        }
+                    }
+                },
+                orderBy: {
+                    startTime: 'asc'
+                }
+            })
+
+            const formattedBookings = bookings.map(booking => ({
+                id: booking.id,
+                title: booking.title,
+                attendeeCount: booking.attendeeCount,
+                roomName: booking.room.name,
+                startTime: formatTime(booking.startTime),
+                endTime: formatTime(booking.endTime),
+                bookingDate: booking.startTime,
+                bookingBy: `${booking.user.firstName} ${booking.user.lastName}`,
+                titleDisplay: `${booking.room.name} ตั้งแต่ ${formatTime(booking.startTime)} น. - ${formatTime(booking.endTime)} น.`
+            }))
+
+            return formattedBookings
+        } catch (error) {
+            console.error('Error fetching monthly bookings:', error)
+            set.status = 500
+            return { error: 'An error occurred while fetching monthly bookings' }
+        }
+    }, {
+        query: t.Object({
+            year: t.String(),
+            month: t.String()
+        }),
+        detail: {
+            tags: ['Reports'],
+            summary: 'Monthly bookings report',
+            description: 'Get a list of bookings for a specific month'
+        }
+    })
+    .get('/api/reports/most-used-rooms', async ({ query, set, authenticate }) => {
+        const auth = await authenticate()
+        if (!auth.success) return auth
+
+        const { startDate, endDate, limit = '10' } = query
+        const start = new Date(startDate as string)
+        const end = new Date(endDate as string)
+        const roomLimit = parseInt(limit as string)
+
+        // Validate date range and limit
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end || isNaN(roomLimit) || roomLimit <= 0) {
+            set.status = 400
+            return { error: 'Invalid date range or limit' }
+        }
+
+        try {
+            // Count bookings for each room within the date range
+            const roomUsage = await prisma.booking.groupBy({
+                by: ['roomId'],
+                where: {
+                    startTime: { gte: start },
+                    endTime: { lte: end }
+                },
+                _count: { id: true }
+            })
+
+            // Get room details
+            const roomDetails = await prisma.room.findMany({
+                where: {
+                    id: { in: roomUsage.map(usage => usage.roomId) }
+                },
+                select: {
+                    id: true,
+                    name: true
+                }
+            })
+
+            // Calculate total bookings
+            const totalBookings = roomUsage.reduce((sum, room) => sum + room._count.id, 0)
+
+            // Combine usage data with room details, calculate percentages, and sort by usage count
+            let mostUsedRooms: Array<{
+                roomId: string | number;
+                bookingCount: number;
+                roomName: string;
+                percentage: string;
+            }> = roomUsage
+                .map(usage => ({
+                    roomId: usage.roomId,
+                    bookingCount: usage._count.id,
+                    roomName: roomDetails.find(room => room.id === usage.roomId)?.name || 'Unknown Room',
+                    percentage: (usage._count.id / totalBookings * 100).toFixed(2)
+                }))
+                .sort((a, b) => b.bookingCount - a.bookingCount)
+
+            // Limit the number of rooms and add an "Others" category if necessary
+            if (mostUsedRooms.length > roomLimit) {
+                const topRooms = mostUsedRooms.slice(0, roomLimit - 1)
+                const otherRooms = mostUsedRooms.slice(roomLimit - 1)
+                const otherBookings = otherRooms.reduce((sum, room) => sum + room.bookingCount, 0)
+                const otherPercentage = (otherBookings / totalBookings * 100).toFixed(2)
+
+                mostUsedRooms = [
+                    ...topRooms,
+                    {
+                        roomId: 'others',
+                        bookingCount: otherBookings,
+                        roomName: 'Others',
+                        percentage: otherPercentage
+                    }
+                ]
+            }
+
+            return {
+                totalBookings,
+                roomUsage: mostUsedRooms
+            }
+        } catch (error) {
+            console.error('Error fetching most used rooms:', error)
+            set.status = 500
+            return { error: 'An error occurred while fetching most used rooms' }
+        }
+    }, {
+        query: t.Object({
+            startDate: t.String(),
+            endDate: t.String(),
+            limit: t.Optional(t.String())
+        }),
+        detail: {
+            tags: ['Reports'],
+            summary: 'Most used rooms report for pie chart',
+            description: 'Get a report of the most frequently used rooms within a specified date range, suitable for pie chart visualization'
+        }
+    })
 
 function findFreeTimeSlots(bookings: Booking[], dayStart: Date, dayEnd: Date): TimeSlot[] {
     const sortedBookings = bookings.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
@@ -256,6 +415,18 @@ function findFreeTimeSlots(bookings: Booking[], dayStart: Date, dayEnd: Date): T
     }
 
     return freeSlots;
+}
+
+function formatTime(date: Date): string {
+    // Create a new Date object and subtract 7 hours
+    const adjustedDate = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+
+    // Format the adjusted time
+    return adjustedDate.toLocaleTimeString('th-TH', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false // Ensure 24-hour format
+    });
 }
 
 export default reportController

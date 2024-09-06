@@ -132,8 +132,8 @@ const bookingController = new Elysia()
 
         const { startTime, endTime, description, title, attendeeCount } = body
 
-        const startBooking = new Date(startTime)
-        const endBooking = new Date(endTime)
+        const start = new Date(startTime)
+        const end = new Date(endTime)
 
         try {
             const booking = await prisma.booking.findUnique({
@@ -148,28 +148,62 @@ const bookingController = new Elysia()
                 return { error: 'Access denied. You can only update your own bookings.' }
             }
 
+            // Check for overlapping bookings
+            const overlappingBooking = await prisma.booking.findFirst({
+                where: {
+                    id: { not: parseInt(params.id) }, // Exclude the current booking
+                    roomId: booking.roomId,
+                    OR: [
+                        {
+                            AND: [
+                                { startTime: { lte: start } },
+                                { endTime: { gt: start } }
+                            ]
+                        },
+                        {
+                            AND: [
+                                { startTime: { lt: end } },
+                                { endTime: { gte: end } }
+                            ]
+                        },
+                        {
+                            AND: [
+                                { startTime: { gte: start } },
+                                { endTime: { lte: end } }
+                            ]
+                        }
+                    ]
+                }
+            })
+
+            if (overlappingBooking) {
+                set.status = 409 // Conflict
+                return { error: 'This room is already booked for the specified time period.' }
+            }
+
             const updatedBooking = await prisma.booking.update({
                 where: { id: parseInt(params.id) },
                 data: {
                     title,
+                    description,
                     attendeeCount,
-                    startTime: startBooking,
-                    endTime: endBooking,
-                    description
+                    startTime: start,
+                    endTime: end
                 }
             })
             return updatedBooking
         } catch (error) {
+            console.error('Booking update error:', error)
             set.status = 400
-            return { error: 'Update failed' }
+            return { error: 'Update failed. Please check your input.' }
         }
     }, {
         body: t.Object({
             startTime: t.String(),
             endTime: t.String(),
             description: t.Optional(t.String()),
-            title: t.Optional(t.String()),
-            attendeeCount: t.Optional(t.Number())
+            title: t.String(),
+            attendeeCount: t.Number()
         }),
         detail: {
             tags: ['Bookings'],
@@ -188,6 +222,7 @@ const bookingController = new Elysia()
             const booking = await prisma.booking.findUnique({
                 where: { id: parseInt(params.id) }
             })
+            
             if (!booking) {
                 set.status = 404
                 return { error: 'Booking not found' }
@@ -200,9 +235,10 @@ const bookingController = new Elysia()
             await prisma.booking.delete({
                 where: { id: parseInt(params.id) }
             })
-            set.status = 204
+            set.status = 200
             return { success: true, message: 'Booking deleted' }
         } catch (error) {
+            console.error('Error deleting booking:', error)
             set.status = 400
             return { error: 'Delete failed' }
         }
@@ -228,6 +264,68 @@ const bookingController = new Elysia()
             tags: ['Bookings'],
             summary: 'Get my bookings',
             description: 'Retrieve all bookings for the authenticated user'
+        }
+    })
+
+    .get('/available-rooms', async ({ query, set, authenticate }) => {
+        const auth = await authenticate()
+        if (!auth.success) return auth
+
+        const { startTime, endTime } = query
+        const start = new Date(startTime)
+        const end = new Date(endTime)
+
+        try {
+            // Get all rooms
+            const allRooms = await prisma.room.findMany()
+
+            // Get bookings that overlap with the specified time period
+            const overlappingBookings = await prisma.booking.findMany({
+                where: {
+                    OR: [
+                        {
+                            AND: [
+                                { startTime: { lte: start } },
+                                { endTime: { gt: start } }
+                            ]
+                        },
+                        {
+                            AND: [
+                                { startTime: { lt: end } },
+                                { endTime: { gte: end } }
+                            ]
+                        },
+                        {
+                            AND: [
+                                { startTime: { gte: start } },
+                                { endTime: { lte: end } }
+                            ]
+                        }
+                    ]
+                }
+            })
+
+            // Create a set of booked room IDs
+            const bookedRoomIds = new Set(overlappingBookings.map(booking => booking.roomId))
+
+            // Filter out booked rooms
+            const availableRooms = allRooms.filter(room => !bookedRoomIds.has(room.id))
+
+            return availableRooms
+        } catch (error) {
+            console.error('Error fetching available rooms:', error)
+            set.status = 500
+            return { error: 'An error occurred while fetching available rooms.' }
+        }
+    }, {
+        query: t.Object({
+            startTime: t.String(),
+            endTime: t.String()
+        }),
+        detail: {
+            tags: ['Bookings'],
+            summary: 'Get available rooms',
+            description: 'Retrieve a list of available rooms for a specific time period'
         }
     })
 
